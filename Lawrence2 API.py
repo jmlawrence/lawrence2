@@ -1,4 +1,4 @@
-# VERSION 0.0.13.0 | STABLE 
+# VERSION 0.0.15.0 | STABLE 
 
 import pandas as pd
 import numpy as np
@@ -17,8 +17,7 @@ def initialize(context):
 	context.display_extra_info = True 
 
 	# Shares to be traded per transaction
-	context.bear_shares = 1000 
-	context.bull_shares = 2500
+	context.cash_per_trade = 10000
 	
 	context.day = 0
 
@@ -31,12 +30,13 @@ def initialize(context):
 def handle_data(context, data):
 	c = context
 	c.data = data
+	normal_spread = 20.39
 	coke = c.bear_stock
 	pepsi = c.bull_stock
-	coke_shares = dollars_of_shares(5000, coke, c)
-	pepsi_shares = dollars_of_shares(5000, pepsi, c)
+	coke_shares = dollars_of_shares(context.cash_per_trade, coke, c)
+	pepsi_shares = dollars_of_shares(context.cash_per_trade, pepsi, c)
 	c.stocks = [c.bear_stock, c.bull_stock]
-	normal_spread = 20.39
+	spread = spread_of(coke, pepsi, normal_spread, c)
 
 
 
@@ -98,8 +98,8 @@ def handle_data(context, data):
 # volume_is([stock], c)
 #   -> Returns the volume for the given stock at the moment
 
-# next_day(c)
-#		-> Tells computer that it is the next day - needed when trying to do something once a week
+# new_day(c)
+#		-> Tells the computer that it is a new trading day - needed when using end_of_week()
 
 ####  AVAILABLE FUNCTIONS END  ####
 				
@@ -118,20 +118,20 @@ def handle_data(context, data):
 				
 # START TRADING LOOP #    
 				
+
 		
 	if time_is("1:30"):
-		next_day(c)
-		if spread_of(coke, pepsi, normal_spread, c) < -1:
+		new_day(c); log.info("SPREAD: " + str(spread))
+
+		if spread > 1:
 			buy(coke, coke_shares, c)
 			sell(pepsi, pepsi_shares, c)
 				
-		elif spread_of(coke, pepsi, normal_spread, c) > 1:
+		elif spread < -1:
 			sell(coke, coke_shares, c)
 			buy(pepsi, pepsi_shares, c)
 
-					
 	if end_of_day() and once_a_week(c):
-		print("2%" < "23%")
 		close_positions(c)
 												
 
@@ -153,11 +153,12 @@ def handle_data(context, data):
 												
 												
 # HELPER FUNCTIONS #
-def next_day(c):
-	c.day += 1
+
+def new_day(context):
+	context.day += 1
 
 def dollars_of_shares(amount, stock, c):
-	return amount/current_price(stock, c) 
+	return round(amount/current_price(stock, c), 0) 
 
 def price_change(stock, c):
 	return abs((current_price(stock, c)/get_last_price(stock, c))-1) * 100
@@ -166,7 +167,7 @@ def spread_of(bearStock, bullStock, normal, context):
 	return (((current_price(bullStock, context) / current_price(bearStock, context)) - 1) * 100) - normal
 
 def once_a_week(context):
-	return (context.day % 5 == 5)
+	return (context.day % 5 == 0)
 
 def buy(stock, amount, c):
 	trade("buy", stock, amount, c)
@@ -184,13 +185,13 @@ def current_price(stock, context):
 	return context.data[stock].price
 
 def close_positions(context):
-	log.info("# START CLOSING ALL POSITIONS #")
+	log.info("START CLOSING ALL POSITIONS")
 	for stock in context.stocks:
 		if context.portfolio.positions[stock].amount < 0:
 			trade("buy", stock, context.portfolio.positions[stock].amount, context)
 		elif context.portfolio.positions[stock].amount > 0:
 			trade("sell", stock, context.portfolio.positions[stock].amount, context)
-	log.info("# ALL POSITIONS CLOSED #")
+	log.info("ALL POSITIONS CLOSED")
 				
 def end_of_day():
 	return time_is("2:59")
