@@ -1,4 +1,4 @@
-# VERSION 0.0.15.0 | STABLE 
+# VERSION 0.0.16.0 | STABLE 
 
 import pandas as pd
 import numpy as np
@@ -10,16 +10,18 @@ def initialize(context):
 
 	# USER SETTINGS START #
 	
-	context.bear_stock = symbol('COKE') # Bear Stock
-	context.bull_stock = symbol('PEP') # Bull Stock
+	context.low_stock = symbol('KO') # Bear Stock
+	context.high_stock = symbol('PEP') # Bull Stock
 
 	# Whether the log should output extra info
 	context.display_extra_info = True 
 
 	# Shares to be traded per transaction
-	context.cash_per_trade = 10000
+	context.cash_per_trade = 20000
 	
 	context.day = 0
+
+	context.default_spread = 126.5#% big / small
 
 	# The commisions per trade
 	set_commission(commission.PerTrade(cost=5.00))
@@ -30,13 +32,15 @@ def initialize(context):
 def handle_data(context, data):
 	c = context
 	c.data = data
-	normal_spread = 20.39
-	coke = c.bear_stock
-	pepsi = c.bull_stock
+	coke = c.low_stock
+	pepsi = c.high_stock
 	coke_shares = dollars_of_shares(context.cash_per_trade, coke, c)
 	pepsi_shares = dollars_of_shares(context.cash_per_trade, pepsi, c)
-	c.stocks = [c.bear_stock, c.bull_stock]
-	spread = spread_of(coke, pepsi, normal_spread, c)
+
+	c.stocks = [c.high_stock, c.low_stock]
+	spread = spread_from_default(pepsi, coke, c)
+	c.spread = spread
+	#log.info("SPREAD AT THE MOMENT: {0}".format(spread_of(pepsi, coke, c)))
 
 
 
@@ -121,17 +125,18 @@ def handle_data(context, data):
 
 		
 	if time_is("1:30"):
-		new_day(c); log.info("SPREAD: " + str(spread))
+		new_day(c); tell_me("spread", c)
 
-		if spread > 1:
+		if spread > 2:
 			buy(coke, coke_shares, c)
 			sell(pepsi, pepsi_shares, c)
 				
-		elif spread < -1:
-			sell(coke, coke_shares, c)
+		elif spread < -2:
 			buy(pepsi, pepsi_shares, c)
+			sell(coke, coke_shares, c)
 
 	if end_of_day() and once_a_week(c):
+		update_spread(pepsi, coke, "monthly", c) # big, small, c
 		close_positions(c)
 												
 
@@ -154,6 +159,15 @@ def handle_data(context, data):
 												
 # HELPER FUNCTIONS #
 
+def update_spread(highStock, lowStock, frequency, context):
+	if frequency == "daily" or (frequency == "weekly" and once_a_week(context)) or (frequency == "monthly" and once_a_month(context)): 
+		newSpread = spread_of(highStock, lowStock, context)
+		log.info("Rebalancing spread from {0} to {1}.".format(context.default_spread, newSpread))
+		context.default_spread = newSpread
+
+def spread_of(highStock, lowStock, context):
+	return ((current_price(highStock, context) / current_price(lowStock, context)) - 1) * 100
+
 def new_day(context):
 	context.day += 1
 
@@ -163,11 +177,18 @@ def dollars_of_shares(amount, stock, c):
 def price_change(stock, c):
 	return abs((current_price(stock, c)/get_last_price(stock, c))-1) * 100
 		
-def spread_of(bearStock, bullStock, normal, context):
-	return (((current_price(bullStock, context) / current_price(bearStock, context)) - 1) * 100) - normal
+def spread_from_default(highStock, lowStock, context):
+	return spread_of(highStock, lowStock, context) - context.default_spread
 
 def once_a_week(context):
 	return (context.day % 5 == 0)
+
+def tell_me(what, context):
+	if what.lower() == "spread":
+		log.info("SPREAD: {0}%".format(context.spread))
+
+def once_a_month(context):
+	return (context.day % 20 == 0)
 
 def buy(stock, amount, c):
 	trade("buy", stock, amount, c)
@@ -234,21 +255,21 @@ def average_of(num, timeInterval, stock, context):
 		elif num == 4:
 			hist = history(bar_count=240, frequency='1m', field='price')
 
-		elif timeInterval == "minutes" or timeInterval == "minute":    
-			if num == 1:
-				hist = history(bar_count=2, frequency='1m', field='price')
-			elif num == 5:
-				hist = history(bar_count=5, frequency='1m', field='price')
-			elif num == 10:
-				hist = history(bar_count=10, frequency='1m', field='price')
-			elif num == 25:
-				hist = history(bar_count=25, frequency='1m', field='price')
-			elif num == 50:
-				hist = history(bar_count=50, frequency='1m', field='price')
-			elif num == 100:
-				hist = history(bar_count=100, frequency='1m', field='price')
-			elif num == 180:
-				hist = history(bar_count=180, frequency='1m', field='price')
+	elif timeInterval == "minutes" or timeInterval == "minute":    
+		if num == 1:
+			hist = history(bar_count=2, frequency='1m', field='price')
+		elif num == 5:
+			hist = history(bar_count=5, frequency='1m', field='price')
+		elif num == 10:
+			hist = history(bar_count=10, frequency='1m', field='price')
+		elif num == 25:
+			hist = history(bar_count=25, frequency='1m', field='price')
+		elif num == 50:
+			hist = history(bar_count=50, frequency='1m', field='price')
+		elif num == 100:
+			hist = history(bar_count=100, frequency='1m', field='price')
+		elif num == 180:
+			hist = history(bar_count=180, frequency='1m', field='price')
 
 	return hist.mean()[stock]
 
